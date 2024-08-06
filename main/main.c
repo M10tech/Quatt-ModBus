@@ -15,21 +15,47 @@
 
 // You must set version.txt file to match github version tag x.y.z for LCM4ESP32 to work
 
+uint32_t calccrc(uint8_t * data, int len) { //Modbus CRC algorithm
+    uint32_t crc = 0xFFFF;
+
+    for (int pos = 0; pos < len; pos++) {
+        crc ^= (int)data[pos];         // XOR byte into least sig. byte of crc
+        for (int i = 8; i != 0; i--) {  // Loop over each bit
+            if ((crc & 0x0001) != 0) {  // If the LSB is set
+                crc >>= 1;              // Shift right and XOR 0xA001
+                crc ^= 0xA001;
+            } else  crc >>= 1;          // Else LSB is not set so Just shift right
+        }
+    }
+    return crc; // Note, this number has low and high bytes swapped, so use it accordingly (or swap bytes)
+}
+
 #define RD_BUF_SIZE (1024)
 static QueueHandle_t uart_queue;
 static void uart_event_task(void *pvParameters) {
     uart_event_t event;
-    size_t buffered_size;
-    uint8_t* dtmp = (uint8_t*) malloc(RD_BUF_SIZE);
+    size_t msg_len;
+    uint8_t* message = (uint8_t*) malloc(RD_BUF_SIZE);
+    uint32_t msg_crc,datacrc; //*data=NULL,
     while (true) {
         //Waiting for UART event.
         if (xQueueReceive(uart_queue, (void *)&event, (TickType_t)portMAX_DELAY)) {
-            bzero(dtmp, RD_BUF_SIZE);
+            bzero(message, RD_BUF_SIZE);
             switch (event.type) {
             //Event of UART receving data
             case UART_DATA:
-                buffered_size = uart_read_bytes(UART_NUM_1, dtmp, event.size, 100);
-                if (buffered_size>0) {UDPLUS("D%4d", buffered_size); for (int i=0;i<buffered_size;i++) UDPLUS(" %02x",dtmp[i]); UDPLUS("\n");}
+                msg_len = uart_read_bytes(UART_NUM_1, message, event.size, 100);
+                if (msg_len>0) {
+                    UDPLUS("D%4d", msg_len);
+                    for (int i=0;i<msg_len-2;i++) UDPLUS(" %02x",message[i]);
+                    datacrc=message[msg_len-1]*256+message[msg_len-2]; //swap bytes
+                    msg_crc=calccrc(message,msg_len-2); //calc CRC
+                    if (msg_crc==datacrc) { // compare and proces good CRC
+                         UDPLUS("  CRC_OK\n");
+                    } else { // bad CRC
+                        UDPLUS(" calccrc=%04lx != datacrc=%04lx\n",msg_crc,datacrc);
+                    }
+                }
                 break;
             //Event of UART ring buffer full
             case UART_BUFFER_FULL:
@@ -41,8 +67,8 @@ static void uart_event_task(void *pvParameters) {
                 break;
             //Event of UART RX break detected
             case UART_BREAK:
-                buffered_size = uart_read_bytes(UART_NUM_1, dtmp, event.size, 100);
-                if (buffered_size>0) {UDPLUS("B%4d", buffered_size); for (int i=0;i<buffered_size;i++) UDPLUS(" %02x",dtmp[i]); UDPLUS("\n");}
+                msg_len = uart_read_bytes(UART_NUM_1, message, event.size, 100);
+                if (msg_len>0) {UDPLUS("B%4d", msg_len); for (int i=0;i<msg_len;i++) UDPLUS(" %02x",message[i]); UDPLUS("\n");}
                 break;
             default:
                 UDPLUS("uart event type: %d and event size=%d\n", event.type, event.size);
@@ -50,8 +76,8 @@ static void uart_event_task(void *pvParameters) {
             }
         }
     }
-    free(dtmp);
-    dtmp = NULL;
+    free(message);
+    message = NULL;
     vTaskDelete(NULL);
 } 
 
