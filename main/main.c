@@ -56,12 +56,12 @@ static void uart_event_task(void *pvParameters) {
                     datacrc=message[msg_len-1]*256+message[msg_len-2]; //swap bytes
                     msg_crc=calccrc(message,msg_len-2); //calc CRC
                     if (msg_crc==datacrc) { // compare and proces good CRC
-                        if (memcmp(message, x0f9f_addr, 4)) {x0f9f[0]=message[4];x0f9f[1]=message[5]; break;}
-                        if (memcmp(message, x07cf_addr, 4)) {x07cf[0]=message[4];x07cf[1]=message[5]; break;}
-                        if (memcmp(message, x07da_addr, 4)) {x07da[0]=message[4];x07da[1]=message[5]; break;}
-                        if (memcmp(message, x07df_addr, 4)) {x07df[0]=message[4];x07df[1]=message[5]; break;}
-                        if (memcmp(message, x0833_read, 6)) {break;} //ignore the read request
-                        if (memcmp(message, x0833_resp, 5)) { //dump all known entries
+                        if (!memcmp(message, x0f9f_addr, 4)) {x0f9f[0]=message[4];x0f9f[1]=message[5]; break;}
+                        if (!memcmp(message, x07cf_addr, 4)) {x07cf[0]=message[4];x07cf[1]=message[5]; break;}
+                        if (!memcmp(message, x07da_addr, 4)) {x07da[0]=message[4];x07da[1]=message[5]; break;}
+                        if (!memcmp(message, x07df_addr, 4)) {x07df[0]=message[4];x07df[1]=message[5]; break;}
+                        if (!memcmp(message, x0833_read, 6)) {break;} //ignore the read request
+                        if (!memcmp(message, x0833_resp, 5)) { //dump all known entries
                             UDPLUS("KNOWN ID ");
                             for (int i=5;i<msg_len-2;i+=2) UDPLUS("%02x%02x ",message[i],message[i+1]);
                             UDPLUS("%02x%02x ",x0f9f[0],x0f9f[1]);
