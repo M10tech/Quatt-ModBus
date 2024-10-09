@@ -8,6 +8,8 @@ under developement so don't expect stability or anything
 
 ## Version History
 
+### 0.0.6 read match tracking
+- must link read command and answer
 
 ### 0.0.4 bad logic
 - memcmp match is 0, not 1

@@ -37,13 +37,13 @@ static void uart_event_task(void *pvParameters) {
     size_t msg_len;
     uint8_t* message = (uint8_t*) malloc(RD_BUF_SIZE);
     uint32_t msg_crc,datacrc; //*data=NULL,
-    
+    bool read_match=false;
     uint8_t x0f9f_addr[]={1,6,0x0f,0x9f},x0f9f[2];
     uint8_t x07cf_addr[]={1,6,0x07,0xcf},x07cf[2];
     uint8_t x07da_addr[]={1,6,0x07,0xda},x07da[2];
     uint8_t x07df_addr[]={1,6,0x07,0xdf},x07df[2];
     uint8_t x0833_read[]={1,3,0x08,0x33,0x00,0x28};
-    uint8_t x0833_resp[]={1,3,0x08,0x33,0x50};
+    uint8_t x0833_resp[]={1,3,0x50}; //TODO: make better match system
     while (true) {
         //Waiting for UART event.
         if (xQueueReceive(uart_queue, (void *)&event, (TickType_t)portMAX_DELAY)) {
@@ -60,8 +60,8 @@ static void uart_event_task(void *pvParameters) {
                         if (!memcmp(message, x07cf_addr, 4)) {x07cf[0]=message[4];x07cf[1]=message[5]; break;}
                         if (!memcmp(message, x07da_addr, 4)) {x07da[0]=message[4];x07da[1]=message[5]; break;}
                         if (!memcmp(message, x07df_addr, 4)) {x07df[0]=message[4];x07df[1]=message[5]; break;}
-                        if (!memcmp(message, x0833_read, 6)) {break;} //ignore the read request
-                        if (!memcmp(message, x0833_resp, 5)) { //dump all known entries
+                        if (!memcmp(message, x0833_read, 6)) {read_match=true; break;} //ignore the read request
+                        if (read_match && !memcmp(message, x0833_resp, 3)) { //dump all known entries
                             UDPLUS("KNOWN ID ");
                             for (int i=5;i<msg_len-2;i+=2) UDPLUS("%02x%02x ",message[i],message[i+1]);
                             UDPLUS("%02x%02x ",x0f9f[0],x0f9f[1]);
@@ -69,6 +69,7 @@ static void uart_event_task(void *pvParameters) {
                             UDPLUS("%02x%02x ",x07da[0],x07da[1]);
                             UDPLUS("%02x%02x ",x07df[0],x07df[1]);
                             UDPLUS("\n");
+                            read_match=false;
                             break;
                         }
                         UDPLUS("NEW %4d",msg_len);
