@@ -37,6 +37,13 @@ static void uart_event_task(void *pvParameters) {
     size_t msg_len;
     uint8_t* message = (uint8_t*) malloc(RD_BUF_SIZE);
     uint32_t msg_crc,datacrc; //*data=NULL,
+    
+    uint8_t x0f9f_addr[]={1,6,0x0f,0x9f},x0f9f[2];
+    uint8_t x07cf_addr[]={1,6,0x07,0xcf},x07cf[2];
+    uint8_t x07da_addr[]={1,6,0x07,0xda},x07da[2];
+    uint8_t x07df_addr[]={1,6,0x07,0xdf},x07df[2];
+    uint8_t x0833_read[]={1,3,0x08,0x33,0x00,0x28};
+    uint8_t x0833_resp[]={1,3,0x08,0x33,0x50};
     while (true) {
         //Waiting for UART event.
         if (xQueueReceive(uart_queue, (void *)&event, (TickType_t)portMAX_DELAY)) {
@@ -46,13 +53,30 @@ static void uart_event_task(void *pvParameters) {
             case UART_DATA:
                 msg_len = uart_read_bytes(UART_NUM_1, message, event.size, 100);
                 if (msg_len>0) {
-                    UDPLUS("D%4d", msg_len);
-                    for (int i=0;i<msg_len-2;i++) UDPLUS(" %02x",message[i]);
                     datacrc=message[msg_len-1]*256+message[msg_len-2]; //swap bytes
                     msg_crc=calccrc(message,msg_len-2); //calc CRC
                     if (msg_crc==datacrc) { // compare and proces good CRC
-                         UDPLUS("  CRC_OK\n");
+                        if (memcmp(message, x0f9f_addr, 4)) {x0f9f[0]=message[4];x0f9f[1]=message[5]; break;}
+                        if (memcmp(message, x07cf_addr, 4)) {x07cf[0]=message[4];x07cf[1]=message[5]; break;}
+                        if (memcmp(message, x07da_addr, 4)) {x07da[0]=message[4];x07da[1]=message[5]; break;}
+                        if (memcmp(message, x07df_addr, 4)) {x07df[0]=message[4];x07df[1]=message[5]; break;}
+                        if (memcmp(message, x0833_read, 6)) {break;} //ignore the read request
+                        if (memcmp(message, x0833_resp, 5)) { //dump all known entries
+                            UDPLUS("KNOWN ID ");
+                            for (int i=5;i<msg_len-2;i+=2) UDPLUS("%02x%02x ",message[i],message[i+1]);
+                            UDPLUS("%02x%02x ",x0f9f[0],x0f9f[1]);
+                            UDPLUS("%02x%02x ",x07cf[0],x07cf[1]);
+                            UDPLUS("%02x%02x ",x07da[0],x07da[1]);
+                            UDPLUS("%02x%02x ",x07df[0],x07df[1]);
+                            UDPLUS("\n");
+                            break;
+                        }
+                        UDPLUS("NEW %4d",msg_len);
+                        for (int i=0;i<msg_len-2;i++) UDPLUS(" %02x",message[i]);
+                        UDPLUS("  CRC_OK\n");
                     } else { // bad CRC
+                        UDPLUS("BAD %4d",msg_len);
+                        for (int i=0;i<msg_len-2;i++) UDPLUS(" %02x",message[i]);
                         UDPLUS(" calccrc=%04lx != datacrc=%04lx\n",msg_crc,datacrc);
                     }
                 }
