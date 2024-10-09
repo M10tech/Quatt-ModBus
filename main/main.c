@@ -8,6 +8,7 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_wifi.h"
+#include "esp_netif_sntp.h"
 // #include "lcm_api.h"
 #include <udplogger.h>
 #include "driver/uart.h"
@@ -47,6 +48,12 @@ static void uart_event_task(void *pvParameters) {
     while (true) {
         //Waiting for UART event.
         if (xQueueReceive(uart_queue, (void *)&event, (TickType_t)portMAX_DELAY)) {
+            char strtm[32];
+            struct timeval tv;
+            gettimeofday(&tv, NULL);
+            time_t now=tv.tv_sec;
+            struct tm *tm = localtime(&now);
+            sprintf(strtm,"%2d_%02d:%02d:%02d",tm->tm_mday,tm->tm_hour,tm->tm_min,tm->tm_sec);
             bzero(message, RD_BUF_SIZE);
             switch (event.type) {
             //Event of UART receving data
@@ -62,8 +69,8 @@ static void uart_event_task(void *pvParameters) {
                         if (!memcmp(message, x07df_addr, 4)) {x07df[0]=message[4];x07df[1]=message[5]; break;}
                         if (!memcmp(message, x0833_read, 6)) {read_match=true; break;} //ignore the read request
                         if (read_match && !memcmp(message, x0833_resp, 3)) { //dump all known entries
-                            UDPLUS("KNOWN ID ");
-                            for (int i=5;i<msg_len-2;i+=2) UDPLUS("%02x%02x ",message[i],message[i+1]);
+                            UDPLUS("OLD %s ",strtm);
+                            for (int i=3;i<msg_len-2;i+=2) UDPLUS("%02x%02x ",message[i],message[i+1]);
                             UDPLUS("%02x%02x ",x0f9f[0],x0f9f[1]);
                             UDPLUS("%02x%02x ",x07cf[0],x07cf[1]);
                             UDPLUS("%02x%02x ",x07da[0],x07da[1]);
@@ -106,6 +113,17 @@ static void uart_event_task(void *pvParameters) {
     vTaskDelete(NULL);
 } 
 
+void init_task(void *argv) {
+    setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1); tzset();
+    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    esp_netif_sntp_init(&config);
+    while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) != ESP_OK) {
+        UDPLUS("Still waiting for system time to sync\n");
+    }
+    time_t ts = time(NULL);
+    UDPLUS("TIME SET: %u=%s\n", (unsigned int) ts, ctime(&ts));
+    vTaskDelete(NULL);
+}
 
 void main_task(void *arg) {
     udplog_init(3);
@@ -134,6 +152,7 @@ void main_task(void *arg) {
     
     ESP_ERROR_CHECK(uart_set_pin(uart_num, 1, 0, 2, UART_PIN_NO_CHANGE));
     ESP_ERROR_CHECK(uart_set_mode(uart_num,UART_MODE_RS485_HALF_DUPLEX));
+    xTaskCreate(init_task,"Time", 2048, NULL, 6, NULL);
     xTaskCreate(uart_event_task,"uart",2048,NULL,12,NULL);
     
     while (true) {

@@ -8,6 +8,9 @@ under developement so don't expect stability or anything
 
 ## Version History
 
+### 0.0.7 add time stamps
+- fix first register report
+
 ### 0.0.6 read match tracking
 - must link read command and answer
 
