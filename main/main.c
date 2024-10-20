@@ -13,8 +13,11 @@
 #include <udplogger.h>
 #include "driver/uart.h"
 #include "soc/uart_reg.h"
+#include "ping/ping_sock.h"
 
 // You must set version.txt file to match github version tag x.y.z for LCM4ESP32 to work
+
+char    *pinger_target=NULL;
 
 uint32_t calccrc(uint8_t * data, int len) { //Modbus CRC algorithm
     uint32_t crc = 0xFFFF;
@@ -113,6 +116,43 @@ static void uart_event_task(void *pvParameters) {
     vTaskDelete(NULL);
 } 
 
+int ping_count=60,ping_delay=1; //seconds
+static void ping_success(esp_ping_handle_t hdl, void *args) {
+    ping_count+=20; ping_delay+=5;
+    if (ping_count>120) ping_count=120;
+    if (ping_delay>60)  ping_delay=60;
+    uint32_t elapsed_time;
+    ip_addr_t response_addr;
+    esp_ping_get_profile(hdl, ESP_PING_PROF_TIMEGAP, &elapsed_time, sizeof(elapsed_time));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_IPADDR,  &response_addr,  sizeof(response_addr));
+    UDPLUS("good ping from %s %lu ms -> count: %d s\n", inet_ntoa(response_addr.u_addr.ip4), elapsed_time, ping_count);
+}
+static void ping_timeout(esp_ping_handle_t hdl, void *args) {
+    ping_count--; ping_delay=1;
+    UDPLUS("failed ping -> count: %d s\n", ping_count);
+}
+void ping_task(void *argv) {
+    ip_addr_t target_addr;
+    ipaddr_aton(pinger_target,&target_addr);
+    esp_ping_handle_t ping;
+    esp_ping_config_t ping_config = ESP_PING_DEFAULT_CONFIG();
+    ping_config.target_addr = target_addr;
+    ping_config.timeout_ms = 900; //should time-out before our 1s delay
+    ping_config.count = 1; //one ping at a time means we can regulate the interval at will
+    esp_ping_callbacks_t cbs = {.on_ping_success=ping_success, .on_ping_timeout=ping_timeout, .on_ping_end=NULL, .cb_args=NULL}; //set callback functions
+    esp_ping_new_session(&ping_config, &cbs, &ping);
+    
+    UDPLUS("Pinging IP %s\n", ipaddr_ntoa(&target_addr));
+    while(ping_count){
+        vTaskDelay((ping_delay-1)*(1000/portTICK_PERIOD_MS)); //already waited 1 second...
+        esp_ping_start(ping);
+        vTaskDelay(1000/portTICK_PERIOD_MS); //waiting for answer or timeout to update ping_delay value
+    }
+    UDPLUS("restarting because can't ping home-hub\n");
+    vTaskDelay(1000/portTICK_PERIOD_MS); //allow UDPlog to flush output
+    esp_restart(); //TODO: disable GPIO outputs
+}
+
 void init_task(void *argv) {
     setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1); tzset();
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
@@ -153,6 +193,8 @@ void main_task(void *arg) {
     ESP_ERROR_CHECK(uart_set_pin(uart_num, 1, 0, 2, UART_PIN_NO_CHANGE));
     ESP_ERROR_CHECK(uart_set_mode(uart_num,UART_MODE_RS485_HALF_DUPLEX));
     xTaskCreate(init_task,"Time", 2048, NULL, 6, NULL);
+    pinger_target="192.168.178.5";
+    xTaskCreate(ping_task,"PingT",2048, NULL, 1, NULL);
     xTaskCreate(uart_event_task,"uart",2048,NULL,12,NULL);
     
     while (true) {

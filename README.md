@@ -8,6 +8,10 @@ under developement so don't expect stability or anything
 
 ## Version History
 
+### 0.0.8 ping guard
+- tends to crash when Quatt starts to do real work
+- when no more ping response, resets
+
 ### 0.0.7 add time stamps
 - fix first register report
 
