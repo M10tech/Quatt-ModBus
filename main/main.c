@@ -14,6 +14,7 @@
 #include "driver/uart.h"
 #include "soc/uart_reg.h"
 #include "ping/ping_sock.h"
+#include "hal/wdt_hal.h"
 
 // You must set version.txt file to match github version tag x.y.z for LCM4ESP32 to work
 
@@ -116,6 +117,7 @@ static void uart_event_task(void *pvParameters) {
     vTaskDelete(NULL);
 } 
 
+wdt_hal_context_t rtc_wdt_ctx = RWDT_HAL_CONTEXT_DEFAULT(); //RTC WatchDogTimer context
 int ping_count=60,ping_delay=1; //seconds
 static void ping_success(esp_ping_handle_t hdl, void *args) {
     ping_count+=20; ping_delay+=5;
@@ -126,6 +128,10 @@ static void ping_success(esp_ping_handle_t hdl, void *args) {
     esp_ping_get_profile(hdl, ESP_PING_PROF_TIMEGAP, &elapsed_time, sizeof(elapsed_time));
     esp_ping_get_profile(hdl, ESP_PING_PROF_IPADDR,  &response_addr,  sizeof(response_addr));
     UDPLUS("good ping from %s %lu ms -> count: %d s\n", inet_ntoa(response_addr.u_addr.ip4), elapsed_time, ping_count);
+    //feed the RTC WatchDog
+    wdt_hal_write_protect_disable(&rtc_wdt_ctx);
+    wdt_hal_feed(&rtc_wdt_ctx);
+    wdt_hal_write_protect_enable(&rtc_wdt_ctx);
 }
 static void ping_timeout(esp_ping_handle_t hdl, void *args) {
     ping_count--; ping_delay=1;
@@ -143,6 +149,10 @@ void ping_task(void *argv) {
     esp_ping_new_session(&ping_config, &cbs, &ping);
     
     UDPLUS("Pinging IP %s\n", ipaddr_ntoa(&target_addr));
+    //re-enable RTC WatchDogTimer (don't depend on bootloader to not disable it)
+    wdt_hal_write_protect_disable(&rtc_wdt_ctx);
+    wdt_hal_enable(&rtc_wdt_ctx);
+    wdt_hal_write_protect_enable(&rtc_wdt_ctx);    
     while(ping_count){
         vTaskDelay((ping_delay-1)*(1000/portTICK_PERIOD_MS)); //already waited 1 second...
         esp_ping_start(ping);
