@@ -120,14 +120,13 @@ static void uart_event_task(void *pvParameters) {
 wdt_hal_context_t rtc_wdt_ctx = RWDT_HAL_CONTEXT_DEFAULT(); //RTC WatchDogTimer context
 int ping_count=60,ping_delay=1; //seconds
 static void ping_success(esp_ping_handle_t hdl, void *args) {
-    ping_count+=20; ping_delay+=5;
+    ping_count+=20;
     if (ping_count>120) ping_count=120;
-    if (ping_delay>60)  ping_delay=60;
-    uint32_t elapsed_time;
-    ip_addr_t response_addr;
-    esp_ping_get_profile(hdl, ESP_PING_PROF_TIMEGAP, &elapsed_time, sizeof(elapsed_time));
-    esp_ping_get_profile(hdl, ESP_PING_PROF_IPADDR,  &response_addr,  sizeof(response_addr));
-    UDPLUS("good ping from %s %lu ms -> count: %d s\n", inet_ntoa(response_addr.u_addr.ip4), elapsed_time, ping_count);
+    //uint32_t elapsed_time;
+    //ip_addr_t response_addr;
+    //esp_ping_get_profile(hdl, ESP_PING_PROF_TIMEGAP, &elapsed_time, sizeof(elapsed_time));
+    //esp_ping_get_profile(hdl, ESP_PING_PROF_IPADDR,  &response_addr,  sizeof(response_addr));
+    //UDPLUS("good ping from %s %lu ms -> count: %d s\n", inet_ntoa(response_addr.u_addr.ip4), elapsed_time, ping_count);
     //feed the RTC WatchDog
     wdt_hal_write_protect_disable(&rtc_wdt_ctx);
     wdt_hal_feed(&rtc_wdt_ctx);

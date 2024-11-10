@@ -8,6 +8,11 @@ under developement so don't expect stability or anything
 
 ## Version History
 
+### 0.1.0 must feed WatchDog more often
+- increasing ping interval will trigger WDT all the time
+- now ping is sent every second
+- no point in reporting good pings anymore, only failed ones
+
 ### 0.0.9 RTC watchdog enable
 - to force restart when hard crash
 - ping-response feeds the watchdog
